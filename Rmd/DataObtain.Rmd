@@ -1,0 +1,239 @@
+---
+title: "Data Obtain"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+library(here)
+library(readr)
+# devtools::install_github("abresler/nbastatR")
+library(nbastatR)
+library(tidyverse)
+library(jsonlite)
+library(sp)
+library(RCurl)
+# devtools::install_github("alastairrushworth/inspectdf")
+library(inspectdf)
+library(lubridate)
+library(tidymodels)
+library(cowplot)
+library(reactable)
+library(sparkline)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=T,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+
+col <- colorRampPalette(c("#ED7117", "#000000"))
+```
+
+
+# Theme for plots
+
+```{r}
+theme_bball <- function() {
+  font <- "Roboto Condensed" # Assign up front
+  
+  theme_bw() %+replace%
+  theme(
+          legend.position = "none",
+          legend.title = element_blank(),
+          plot.title = element_text(hjust = 0.5, font),
+          plot.subtitle = element_text(hjust = 0.5, font),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          axis.text.x = element_text(color = "#324D56", font),
+          axis.title.y = element_text(font, angle = 90),
+          axis.title.x = element_text(font),
+          axis.text.y = element_text(color = "#324D56", font),
+          legend.text = element_text(font),
+          text = element_text(font),
+          plot.background = element_rect(fill = "gray20"),
+          panel.background = element_rect(fill = "gray20"),
+          panel.border = element_blank())
+  
+}
+```
+
+
+# IGNORE FOR NOW
+## Initial Data Obtainment
+
+```{r eval = F}
+# Read in Shot Logs Data
+# Turns out NBA stopped sharing data when they partnered with Second Spectrum, looking into buying data
+shot_logs <- read_csv(here("Data/shot_logs.csv"))
+
+# Function for period to integer
+game_clockinteger <- function(GAME_CLOCK) {
+  sapply(strsplit(GAME_CLOCK,":"),
+  function(x) {
+    x <- as.numeric(x)
+    x[1]+x[2]/60
+    }
+  )
+}
+# Make a time remaining variable for join
+shot_logs_clean <- shot_logs %>%
+  mutate(GAME_CLOCK = str_sub(GAME_CLOCK, 1, 5),
+         timeRemaining = case_when(PERIOD == 1 ~ 48 - game_clockinteger(GAME_CLOCK),
+                                   PERIOD == 2 ~ 36 - game_clockinteger(GAME_CLOCK),
+                                   PERIOD == 3 ~ 24 - game_clockinteger(GAME_CLOCK),
+                                   PERIOD == 4 ~ 12 - game_clockinteger(GAME_CLOCK)))
+game_ids <- unique(shot_logs$GAME_ID) # Based on length here we have 904 unique games in the 2015-16 season
+# Obtain all Play by Play Data for Specified Game IDs
+pbp_df <- nbastatR::play_by_play_v2(game_ids = game_ids, nest_data = F, return_message = T)
+pbp_df_clean <- pbp_df %>%
+  mutate(player_name = str_to_title(player_name))
+# play_by_play(game_ids = c(21700002, 21700003), nest_data = F, return_message = T) # Example for reference
+
+# Write in data
+# write_rds(here("Data/pbp_data.rds"))
+# write_csv(here("Data/pbp_data.csv"))
+
+# Join based on game, time, period, player, 
+full_df <- left_join(pbp_df_clean, shot_logs, by = c("idGame" = "GAME_ID", "numberPeriod" = "PERIOD", "idPlayerNBA1" = "player_id",
+                                                "namePlayer1" = "playerName", "timeRemaining"))
+
+# Make Shot Charts
+
+```
+
+## Player Movement Data Obtain
+
+```{r}
+source(here("Functions/Functions.R"))
+all_movements <- json_convert(here("Data/2016.NBA.Raw.SportVU.Game.Logs/0021500491.json"))
+write_rds(all_movements, here("Data/all_movements1.rds"))
+```
+
+```{r}
+inspectdf::show_plot(inspectdf::inspect_types(all_movements)) +
+  theme_bball() +
+  scale_fill_manual(values = col(2))# That's an 8 not infinity
+inspectdf::show_plot(inspectdf::inspect_na(all_movements)) +# Not sure what to do about this
+    theme_bball() +
+  scale_fill_manual(values = col(13))
+inspectdf::show_plot(inspectdf::inspect_cat(all_movements)) +
+  theme_bball() +
+  scale_fill_manual(values = col(104)) # Super cool that it can figure out a different palette for each bar - how is this possible?
+# One dataframe is 2,343,118 observations of 13 variables
+```
+
+# Data Join
+
+Currently just an example.
+
+```{r echo = T}
+game_id <- 0021500491
+# pbp <- get_pbp(game_id) # This way sucks
+pbp <- play_by_play_v2(game_ids = 0021500491) # From nbastatR
+
+pbp <- pbp[-1,] # For some reason top observation is always NAs
+# To join by
+#Trying to limit the fields to join to keep the overall size manageable
+pbp <- pbp %>% rename(event_id = numberEvent) %>%
+  select(event_id, slugScore, descriptionPlayHome, descriptionPlayVisitor, hasVideo,
+         numberEventMessageType, numberEventActionType)
+# Merge
+all_movements <- read_rds(here("Data/all_movements1.rds"))
+# all_movements_clean <- merge(all_movements, pbp, by = "event_id", all.x = T) # Never use this again
+all_movements_clean <- left_join(all_movements, pbp, by = "event_id")
+
+write_rds(all_movements_clean, here("Data/all_movements_clean1.rds"))
+```
+
+#IGNORE FOR NOW
+## Play by Play Data
+
+Needs to have all json files at once, not sure how to run this
+
+```{r eval = F}
+# game_ids <- unique(all_movements$game_id) # Based on length here we have 904 unique games in the 2015-16 season
+# Obtain all Play by Play Data for Specified Game IDs
+pbp_df <- nbastatR::play_by_play_v2(game_ids = game_id, nest_data = F, return_message = T)
+pbp_df_clean <- pbp_df %>%
+  mutate(player_name = str_to_title(player_name))
+head(pbp_df_clean)
+# write_rds(here("Data/pbp_data.rds"))
+# write_csv(here("Data/pbp_data.csv"))
+```
+
+
+It is evident that not every layup results in a made basket.
+
+## A regression
+
+Initial regression respectiving the shot result strata, uses number of dribbles, shot distance, and defender closeness as explanatory variables.
+
+### Split
+
+```{r}
+shot_logs_clean <- shot_logs_clean %>% 
+  mutate(SHOT_RESULT = as.factor(SHOT_RESULT))
+shot_logs_split <- initial_split(shot_logs_clean, prop = 0.75, strata = "SHOT_RESULT")
+shot_logs_train <- training(shot_logs_split)
+shot_logs_test <- testing(shot_logs_split)
+
+logistic_fit <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification") %>%
+  fit(SHOT_RESULT ~ ., data = select(shot_logs_train, CLOSE_DEF_DIST, SHOT_DIST, DRIBBLES, SHOT_RESULT))
+```
+
+### Training models
+
+```{r}
+## get prediction on train set
+pred_logit_train <- predict(logistic_fit, new_data = select(shot_logs_train, CLOSE_DEF_DIST, SHOT_DIST, DRIBBLES, SHOT_RESULT))
+## get prediction on test set
+pred_logit_test <- predict(logistic_fit, new_data = select(shot_logs_test, CLOSE_DEF_DIST, SHOT_DIST, DRIBBLES, SHOT_RESULT))
+## get probabilities on test set
+prob_logit_test <- predict(logistic_fit, new_data = select(shot_logs_test, CLOSE_DEF_DIST, SHOT_DIST, DRIBBLES, SHOT_RESULT), type="prob")
+```
+
+### Evaluating Accuracy
+
+```{r}
+# Returns accuracy and kappa
+metrics(bind_cols(shot_logs_test, pred_logit_test), truth = SHOT_RESULT, estimate = .pred_class)
+```
+
+### Evaluating More Metrics
+
+```{r}
+# Returns a lot of other metrics
+multimetric <- metric_set(accuracy, bal_accuracy, sens, yardstick::spec, precision, recall, ppv, npv)
+multimetric(bind_cols(shot_logs_test, pred_logit_test), truth = SHOT_RESULT, estimate = .pred_class)
+```
+
+### Making an ROC Curve
+
+```{r}
+roc_auc(bind_cols(shot_logs_test, prob_logit_test), truth = SHOT_RESULT, .pred_made)
+```
+
+### Visualization of the Curve
+
+```{r}
+roc_data <- roc_curve(bind_cols(shot_logs_test, prob_logit_test), truth = SHOT_RESULT, .pred_made)
+roc_data %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_path() +
+  geom_abline(lty = "longdash", color = "dark red") + 
+  coord_equal()
+```
+

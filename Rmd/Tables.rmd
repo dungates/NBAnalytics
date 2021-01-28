@@ -1,0 +1,180 @@
+---
+title: "Tables"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true # Other options are downcute, robobook, material, readthedown, html_clean, html_docco, lockdown, https://github.com/juba/rmdformats
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    highlight: tango
+    number_sections: true
+    includes:
+      after_body: footer.html
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+library(nbastatR)
+library(tidyverse)
+library(here)
+library(ggthemes)
+library(cowplot)
+library(reactable)
+library(sparkline)
+library(readr)
+library(plotly)
+
+all_movements <- read_rds(here("Data/all_movements1.rds"))
+
+all_movements_clean <- read_rds(here("Data/all_movements_clean1.rds"))
+
+source(here("Functions/Functions.R"))
+
+## Global options
+# options(max.print="75")
+opts_chunk$set(echo=FALSE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE,
+               align = 'center')
+htmltools::tagList(rmarkdown::html_dependency_font_awesome()) # Needed so fa's in footer will show
+```
+
+```{r}
+# Theme for plots
+theme_bball <- function() {
+  font <- "Roboto Condensed" # Assign up front
+  
+  theme_bw() %+replace%
+  theme(
+          legend.position = "none",
+          legend.title = element_blank(),
+          plot.title = element_text(hjust = 0.5, font),
+          plot.subtitle = element_text(hjust = 0.5, font),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          axis.text.x = element_text(color = "#324D56", font),
+          axis.title.y = element_text(font, angle = 90),
+          axis.title.x = element_text(font),
+          axis.text.y = element_text(color = "#324D56", font),
+          legend.text = element_text(font),
+          text = element_text(font),
+          plot.background = element_rect(fill = "gray20"),
+          panel.background = element_rect(fill = "gray20"),
+          panel.border = element_blank())
+  
+}
+```
+
+```{r}
+# Theme for tables
+options(reactable.theme = reactableTheme(
+  color = "hsl(233, 9%, 87%)",
+  backgroundColor = "hsl(233, 9%, 19%)",
+  borderColor = "hsl(233, 9%, 22%)",
+  stripedColor = "hsl(233, 12%, 22%)",
+  highlightColor = "hsl(233, 12%, 24%)",
+  inputStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  selectStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  style = list(fontFamily = "Roboto Condensed"),
+  pageButtonHoverStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  pageButtonActiveStyle = list(backgroundColor = "hsl(233, 9%, 28%)")
+))
+```
+
+
+# Data Testing
+
+## Comparing player distance for misses, makes, and rebounds
+
+Compare how far Nowitzki travels on misses, makes, and rebounds.
+
+```{r}
+nowitzki_make <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 1),]
+nowitzki_miss <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 2),]
+nowitzki_rebound <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 4),]
+# Makes
+travel_dist(nowitzki_make$x_loc, nowitzki_make$y_loc)
+# Misses
+travel_dist(nowitzki_miss$x_loc, nowitzki_miss$y_loc)
+# Rebounds
+travel_dist(nowitzki_rebound$x_loc, nowitzki_rebound$y_loc)
+# All of these in xloc, yloc scale, figure out how to convert that later
+```
+
+
+## Comparing player distance on layups
+
+Lets look at what players run the farthest on plays where there is a layup.
+
+```{r}
+player_layup <- all_movements_clean[which(all_movements_clean$numberEventActionType == 5),]
+dist_traveled_players <- player_layup %>% 
+  mutate(lastname = paste(firstname, lastname)) %>%
+  mutate(lastname = ifelse(lastname == "NA ball", "The Ball", lastname)) %>%
+  group_by(lastname) %>%
+ summarise(total_dist = travel_dist(x_loc, y_loc), player_id = max(player_id)) %>%
+  arrange(desc(total_dist))
+dist_traveled_players %>%
+  reactable::reactable(columns = list(
+    lastname = colDef(name = "Name"),
+    total_dist = colDef(name = "Total Distance"),
+    player_id = colDef(name = "Player ID")
+  ),
+  defaultColDef = colDef(footer = function(values) {
+    if (!is.numeric(values)) return()
+    sparkline(values, type = "box", width = 100, height = 30)
+  }))
+```
+
+Let's compare this to the list of players that run the farthest when a layup is made.
+
+```{r}
+player_layup <- all_movements_clean[which(all_movements_clean$numberEventActionType == 5 & all_movements_clean$numberEventMessageType == 1),]
+dist_traveled_players <- player_layup %>% 
+  mutate(lastname = paste(firstname, lastname)) %>%
+  mutate(lastname = ifelse(lastname == "NA ball", "The Ball", lastname)) %>%
+  group_by(lastname) %>%
+ summarise(total_dist = travel_dist(x_loc, y_loc), player_id = max(player_id)) %>%
+  arrange(desc(total_dist))
+dist_traveled_players %>%
+  reactable::reactable(columns = list(
+    lastname = colDef(name = "Name"),
+    total_dist = colDef(name = "Total Distance"),
+    player_id = colDef(name = "Player ID")
+  ),
+  defaultColDef = colDef(footer = function(values) {
+    if (!is.numeric(values)) return()
+    sparkline(values, type = "box", width = 100, height = 30)
+  }))
+```
+
+
+# Player Velocity, Acceleration, and Jerk
+
+How fast does the ball move on a particular play? I choose a pass that results in a steal here.
+
+```{r}
+event_df <- all_movements_clean %>%
+  dplyr::filter(event_id == 56) %>% # Random play
+  dplyr::filter(player_id == -1) %>% # Select only ball
+  dplyr::filter(shot_clock != 24)# Prevent data spill over
+
+v <- velocity(event_df$x_loc, event_df$y_loc)
+v <- prepend(v, NA)
+
+event_df <- event_df %>% bind_cols(velocity = v)
+ggplot(event_df, aes(x = game_clock, y = velocity)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(span = 0.05, se = F)
+
+mean(v)
+```
+
+

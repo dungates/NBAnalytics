@@ -1,0 +1,120 @@
+---
+title: "Introduction"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true # Other options are downcute, robobook, material, readthedown, html_clean, html_docco, lockdown, https://github.com/juba/rmdformats
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    highlight: tango
+    number_sections: true
+    includes:
+      after_body: footer.html
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+library(tidyverse)
+library(here)
+library(ggthemes)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=FALSE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+htmltools::tagList(rmarkdown::html_dependency_font_awesome()) # Needed so fa's in footer will show
+
+theme_set(theme_minimal() + theme(plot.title = element_text(hjust = 0.5)))
+```
+
+```{css echo = F}
+h1 {
+  text-align: center;
+}
+```
+
+# Introduction
+
+The field of sports analytics has a large focus on applications of basic statistics to examine the effectiveness of various players in various roles, the goal of this investigation is to apply various machine learning algorithms to the issue of predicting whether or not a given shot by an NBA player will be successful. In the investigation I plan to examine the effectiveness of logistic regression, SVMs, Naive Bayes, Neural Networks, Random Forests, and boosting. 
+
+The main challenge in predicting a shot comes from the limited amount of information provided by the given features. Although there is some lower level information such as the player’s distance from the basket and the distance of the closest defender, most of the features consist of higher level features such as whether the game is “home” or “away”, time left on the game clock, etc. These higher level features tell us much less about an individual’s performance, but there still could be some correlation with shot accuracy (e.g. later in the game the players will be more tired, which could affect their shooting).
+
+# Literature Review
+
+## Network models:
+
+One common approach to characterizing team play involves modeling the game as a network and/or modeling transition probabilities between discrete game states. For example, Fewell et al. (2012) define players as nodes and ball movement as edges and compute network statistics like degree and flow centrality across positions and teams. They differentiate teams based on the propensity of the offense to either move the ball to their primary shooters or distribute the ball unpredictably. Fewell et al. (2012) suggest conducting these analyses over multiple seasons to determine if a team’s ball distribution changes when faced with new defenses. Xin et al. (2017) use a similar framework in which players are nodes and passes are transactions that occur on edges. They use more granular data than Fewell et al. (2012) and develop an inhomogeneous continuous-time Markov chain to accurately characterize players’ contributions to team play.
+
+## Spatial Perspectives:
+
+Many studies of team play also focus on the importance of spacing and spatial context. Metulini et al. (2018) try to identify spatial patterns that improve team performance on both the offensive and defensive ends of the court. The authors use a two-state Hidden Markov Model to model changes in the surface area of the convex hull formed by the five players on the court. The model describes how changes in the surface area are tied to team performance, on-court lineups, and strategy. Cervone et al. (2016a) explore a related problem of assessing the value of different court-regions by modeling ball movement over the course of possessions. Their court-valuation framework can be used to identify teams that effectively suppress their opponents’ ability to control high value regions.
+
+
+
+## Play evaluation and detection:
+
+Finally, Lamas et al. (2015) examine the interplay between offensive actions, or space creation dynamics (SCDs), and defensive actions, or space protection dynamics (SPDs). In their video analysis of six Barcelona F.C. matches from Liga ACB, they found that setting a pick was the most frequent SCD used but it did not result in the highest probability of an open shot, since picks are most often used to initiate an offense, resulting in a new SCD. Instead, the SCD that led to the highest proportion of shots was off-ball player movement. They also found that the employed SPDs affected the success rate of the SCD, demonstrating that offense-defense interactions need to be considered when evaluating outcomes.
+
+## Previous Work as a Basis
+
+
+
+# Background Information
+
+
+The National Basketball Association (NBA) first tracked all games at the start of the 2013-14 NBA season. Second Spectrum is the current Official Optical Tracking Provider of the NBA and began league-wide tracking in the 2017-18 NBA season, replacing STATS SportVU which previously held the league-wide contract.
+
+Statistics have always been utilized in sports, and since the dawn of the sabermetrics movement have become increasingly salient, but how accurately can basic statistics be used to measure a players behavior? Can they be interpreted without bias, or actually even assist coaches and sports analysts in a meaningful quantitative manner? Obviously raw shot percentage is an accurate measurement, but in any given situation a player’s real shot percentage differs drastically from their listed overall percentage. Could the often discussed “feel for the game” be replicated with machine learning - producing a quantification of this qualitative feel? In basketball, an average fan can tell when a player is taking a bad shot because it was heavily contested or there was a higher percentage shot available that another teammate could have taken, but how do you measure that? Recently, Second Spectrum began teaming up with various NBA teams to use machine learning and spatio-temporal pattern recognition to help answer these questions. A simple description/illustration of how this information is captured through the STATS SportVU system, which utilizes a six-camera system installed in basketball arenas to track the real-time positions of players and the ball 25 times per second. Utilizing this tracking data, STATS is able to create a wealth of innovative statistics based on speed, distance, player separation and ball possession.
+
+
+## Highest Shot Value
+
+A more specific application of this technology is shot value. The most widely accepted method of determining whether or not a player is a good shot maker is their effective field goal percentage (EFG%). It is simply a ratio of the shots made over the shots taken. Because 3 pointers are worth more EFG also weighs 3 pointers more heavily. Simply put, EFG captures the ability to make a shot but it does not quantify the quality of the shot. It does not answer the questions of am I getting my best shooters the best shots available to yield the highest success? Or how much do factors such as the shot being contested or how close the defender is to the shooter matter? Capturing the overall ability of a player to make a shot, and therefore the quality of that shot is of vital importance to any NBA team.
+
+Some of the more important features the second spectrum uses to define effective shot quality (ESQ) are defender distance to shooter and catch & shoot vs. off the dribble shot. They then enhance the EFG metric by factoring in ESQ to truly measure shooting value. Some other features the second spectrum includes to determine shot quality are shot distance, shot angle, defender distance, defender angle, player speed and player velocity angle.
+
+
+# Plan for Analysis
+
+- Make Shot Charts
+
+- Make Play by Play Data for Players
+
+- Visualize Data to replicate as with 
+
+```{r}
+knitr::include_graphics(here("Images/EFGVisual.png"))
+knitr::include_graphics(here("Images/EFGShotDefendDistance.png"))
+knitr::include_graphics(here("Images/RealWorldApp.png"))
+```
+
+
+- Make Models
+
+- But which models?
+
+  + Logistic Regression
+  + Support Vector Machines
+  + Naive Bayes 
+  + Neural Networks
+  + Random Forests
+  + Boosting
+
+
+
+
+
+
+
+
+
+
