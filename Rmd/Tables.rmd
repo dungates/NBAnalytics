@@ -24,7 +24,7 @@ library(cowplot)
 library(reactable)
 library(sparkline)
 library(readr)
-library(plotly)
+library(gganimate)
 
 all_movements <- read_rds(here("Data/all_movements1.rds"))
 
@@ -42,10 +42,21 @@ opts_chunk$set(echo=FALSE,
                message=FALSE,
                warning=FALSE,
                align = 'center')
-htmltools::tagList(rmarkdown::html_dependency_font_awesome()) # Needed so fa's in footer will show
+# htmltools::tagList(rmarkdown::html_dependency_font_awesome()) # Needed so fa's in footer will show
+basketball_colors <- colorRampPalette(colors = c("#bcb6ae", "#df861d", "#aa3d01", "#171820")) # Silver to light orange, orange, black
+basketball_colors2 <- colorRampPalette(colors = c("#df861d", "#aa3d01", "#171820"))
+basketball_palette <- c("#171820", "#fdc029", "#df861d", "#aa3d01", "#bcb6ae")
 ```
 
-```{r}
+```{css}
+.special-text {
+  background-color: #FBAB00;
+  border: 3px solid chocolate2;
+  font-weight: bold;
+}
+```
+
+```{r plot-theme}
 # Theme for plots
 theme_bball <- function() {
   font <- "Roboto Condensed" # Assign up front
@@ -54,7 +65,9 @@ theme_bball <- function() {
   theme(
           legend.position = "none",
           legend.title = element_blank(),
-          plot.title = element_text(hjust = 0.5, font),
+          legend.background = element_rect(fill = NA, color = NA),
+          legend.key = element_rect(fill = NA, color = NA, size = 12),
+          plot.title = element_text(hjust = 0.5, font, vjust = 0.5),
           plot.subtitle = element_text(hjust = 0.5, font),
           panel.grid.major.x = element_blank(),
           panel.grid.minor.y = element_blank(),
@@ -65,23 +78,27 @@ theme_bball <- function() {
           legend.text = element_text(font),
           text = element_text(font),
           plot.background = element_rect(fill = "gray20"),
-          panel.background = element_rect(fill = "gray20"),
-          panel.border = element_blank())
+          panel.background = element_rect(fill = "gray20"))
   
 }
 ```
 
-```{r}
+```{r table-theme}
 # Theme for tables
 options(reactable.theme = reactableTheme(
   color = "hsl(233, 9%, 87%)",
-  backgroundColor = "hsl(233, 9%, 19%)",
+  backgroundColor = "hsl(18, 56%, 0%)",
   borderColor = "hsl(233, 9%, 22%)",
   stripedColor = "hsl(233, 12%, 22%)",
   highlightColor = "hsl(233, 12%, 24%)",
   inputStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
   selectStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
   style = list(fontFamily = "Roboto Condensed"),
+  headerStyle = list(
+    "&:hover[aria-sort]" = list(background = "hsl(0, 0%, 96%)"),
+        "&[aria-sort='ascending'], &[aria-sort='descending']" = list(background = "hsl(0, 0%, 96%)"),
+        borderColor = "#555"
+  ),
   pageButtonHoverStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
   pageButtonActiveStyle = list(backgroundColor = "hsl(233, 9%, 28%)")
 ))
@@ -92,19 +109,96 @@ options(reactable.theme = reactableTheme(
 
 ## Comparing player distance for misses, makes, and rebounds
 
-Compare how far Nowitzki travels on misses, makes, and rebounds.
+Here I compare how far Dirk Nowitzki travels on misses, makes, and rebounds. Note to self that event message type is about the type of play, and event message action type is about what actually happened, consists of a ridiculous number of things that will need to be encoded, a start is recorded in Notes/Notes.txt.
 
 ```{r}
-nowitzki_make <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 1),]
-nowitzki_miss <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 2),]
-nowitzki_rebound <- all_movements_clean[which(all_movements_clean$lastname == "Nowitzki" & all_movements_clean$numberEventMessageType == 4),]
+nowitzki_make <- all_movements_clean %>%
+  filter(lastname == "Nowitzki" & numberEventMessageType == 1)
+
+nowitzki_miss <- all_movements_clean %>%
+  filter(lastname == "Nowitzki" & numberEventMessageType == 2)
+
+nowitzki_rebound <- all_movements_clean %>%
+  filter(lastname == "Nowitzki" & numberEventMessageType == 4)
+```
+
+```{r class.output = "special-text"}
+### travel_dist takes x and y position as arguments, for example:
 # Makes
-travel_dist(nowitzki_make$x_loc, nowitzki_make$y_loc)
+travel_dist(nowitzki_make$x_loc, 
+            nowitzki_make$y_loc)
 # Misses
-travel_dist(nowitzki_miss$x_loc, nowitzki_miss$y_loc)
+travel_dist(nowitzki_miss$x_loc, 
+            nowitzki_miss$y_loc)
 # Rebounds
-travel_dist(nowitzki_rebound$x_loc, nowitzki_rebound$y_loc)
-# All of these in xloc, yloc scale, figure out how to convert that later
+travel_dist(nowitzki_rebound$x_loc, 
+            nowitzki_rebound$y_loc)
+# Let's try mapping it
+makes_play_distance <- nowitzki_make %>%
+  split(.$event_id) %>% #There's 44 separate dataframes here
+  map_df(~ travel_dist(.$x_loc, .$y_loc)) %>%
+  pivot_longer(names_to = "Play Event ID", values_to = "Distance", cols = everything()) %>%
+  mutate(Type = "Makes")
+# Let's try mapping it
+misses_play_distance <- nowitzki_miss %>%
+  split(.$event_id) %>% #There's 44 separate dataframes here
+  map_df(~ travel_dist(.$x_loc, .$y_loc)) %>%
+  pivot_longer(names_to = "Play Event ID", values_to = "Distance", cols = everything()) %>%
+  mutate(Type = "Misses")
+# Let's try mapping it
+rebounds_play_distance <- nowitzki_rebound %>%
+  split(.$event_id) %>% #There's 44 separate dataframes here
+  map_df(~ travel_dist(.$x_loc, .$y_loc)) %>%
+  pivot_longer(names_to = "Play Event ID", values_to = "Distance", cols = everything()) %>%
+  mutate(Type = "Rebounds")
+# Bind together
+distance_df <- bind_rows(makes_play_distance, misses_play_distance, rebounds_play_distance) %>%
+  mutate(`Play Event ID` = as.numeric(`Play Event ID`)) %>%
+  arrange(`Play Event ID`) %>%
+  mutate(row = row_number())
+# Dataframe to call for legend to include means
+legend_df <- distance_df %>%
+  group_by(Type) %>%
+  summarise(mean(Distance))
+```
+
+How should I decide which plot to do here, I think annotating substitutions on here would be great.
+
+```{r}
+# Plot, how to visualize this?
+ggplot(distance_df, aes(x = `Play Event ID`, y = Distance, color = Type, group = 1)) +
+  geom_line(show.legend = F) +
+  geom_point() +
+  # geom_smooth(span = 0.1, se = F) +
+  geom_hline(aes(yintercept = mean(Distance)), linetype = "dashed", color = "orange") +
+  scale_y_continuous() +
+  scale_color_manual(values = c("#CF5300", "black", "#CCCCCC"), 
+                     labels = paste0(legend_df$Type, ": ", round(legend_df$`mean(Distance)`, 2), " feet")) +
+  labs(x = "Play of Game", title = "Dirk Nowitzki's Distance Per Play") +
+  theme_bball() +
+  theme(axis.text.x = element_text(color = "gray60"),
+        axis.text.y = element_text(color = "gray60"),
+        panel.grid = element_line(color = "gray60"),
+        panel.background = element_blank(),
+        legend.position = c(0.93, 0.96),
+        legend.key.size = unit(0.5, "cm"))
+# Or is this one better?
+ggplot(distance_df, aes(x = fct_reorder(factor(`Play Event ID`), row), y = Distance, color = Type, group = 1)) +
+  geom_line(show.legend = F) +
+  geom_point() +
+  # geom_smooth(span = 0.1, se = F) +
+  geom_hline(aes(yintercept = mean(Distance)), linetype = "dashed", color = "orange") +
+  scale_y_continuous() +
+  scale_color_manual(values = c("#CF5300", "black", "#CCCCCC"), 
+                     labels = paste0(legend_df$Type, ": ", round(legend_df$`mean(Distance)`, 2), " feet")) +
+  labs(x = "Play of Game", title = "Dirk Nowitzki's Distance Per Play") +
+  theme_bball() +
+  theme(axis.text.x = element_text(color = "gray60"),
+        axis.text.y = element_text(color = "gray60"),
+        panel.grid = element_line(color = "gray60"),
+        panel.background = element_blank(),
+        legend.position = c(0.93, 0.96),
+        legend.key.size = unit(0.5, "cm"))
 ```
 
 
@@ -113,35 +207,68 @@ travel_dist(nowitzki_rebound$x_loc, nowitzki_rebound$y_loc)
 Lets look at what players run the farthest on plays where there is a layup.
 
 ```{r}
-player_layup <- all_movements_clean[which(all_movements_clean$numberEventActionType == 5),]
+player_layup <- all_movements_clean %>%
+  filter(numberEventActionType == 5) 
 dist_traveled_players <- player_layup %>% 
   mutate(lastname = paste(firstname, lastname)) %>%
   mutate(lastname = ifelse(lastname == "NA ball", "The Ball", lastname)) %>%
+  group_by(lastname, event_id) %>%
+ summarise(total_dist = distance_mean(x_loc, y_loc),
+           velocity_mean = velocity_mean(x_loc, y_loc),
+           acceleration_mean = acceleration_mean(x_loc, y_loc),
+           jerk_mean = jerk_mean(x_loc, y_loc)) %>%
   group_by(lastname) %>%
- summarise(total_dist = travel_dist(x_loc, y_loc), player_id = max(player_id)) %>%
-  arrange(desc(total_dist))
+  summarise(total_dist = mean(total_dist),
+            velocity_mean = mean(velocity_mean),
+            acceleration_mean = mean(acceleration_mean),
+            jerk_mean = mean(jerk_mean)) %>%
+  arrange(desc(total_dist)) %>%
+  mutate(total_dist = round(total_dist, 2),
+         velocity_mean = round(velocity_mean, 2),
+         acceleration_mean = round(acceleration_mean, 2),
+         jerk_mean = round(jerk_mean, 2))
 dist_traveled_players %>%
-  reactable::reactable(columns = list(
-    lastname = colDef(name = "Name"),
-    total_dist = colDef(name = "Total Distance"),
-    player_id = colDef(name = "Player ID")
+  reactable::reactable(
+    pagination = F,
+    compact = T,
+    borderless = F,
+    striped = T,
+    columns = list(
+    lastname = colDef(name = "Player"),
+    total_dist = colDef(name = "Total Distance",
+                        style = function(value) {
+                          value
+                          normalized <- (value - min(dist_traveled_players$total_dist)) / 
+                            (max(dist_traveled_players$total_dist) - min(dist_traveled_players$total_dist))
+                          color <- basketball_colors2(normalized)
+                          list(background = color)
+                        },
+                        class = "border-left")
   ),
   defaultColDef = colDef(footer = function(values) {
     if (!is.numeric(values)) return()
-    sparkline(values, type = "box", width = 100, height = 30)
-  }))
+    sparkline(values, type = "box", width = 100, height = 30, 
+              boxLineColor = "#FF8C00", boxFillColor = "#808080", # Silver, others are darkish orange
+              whiskerColor = "#FF8C00", outlierLineColor = "#FF8C00", outlierFillColor = "#FF8C00", medianColor = "#FF8C00") # https://omnipotent.net/jquery.sparkline/#s-docs for full sparkline customization
+  },
+  align = "center", 
+  minWidth = 100))
 ```
 
 Let's compare this to the list of players that run the farthest when a layup is made.
 
 ```{r}
-player_layup <- all_movements_clean[which(all_movements_clean$numberEventActionType == 5 & all_movements_clean$numberEventMessageType == 1),]
+# Filter for layups
+player_layup <- all_movements_clean %>%
+  filter(numberEventActionType == 5 & numberEventMessageType == 1) 
+# Get distance traveled per player on the play
 dist_traveled_players <- player_layup %>% 
   mutate(lastname = paste(firstname, lastname)) %>%
   mutate(lastname = ifelse(lastname == "NA ball", "The Ball", lastname)) %>%
   group_by(lastname) %>%
  summarise(total_dist = travel_dist(x_loc, y_loc), player_id = max(player_id)) %>%
   arrange(desc(total_dist))
+
 dist_traveled_players %>%
   reactable::reactable(columns = list(
     lastname = colDef(name = "Name"),
@@ -159,22 +286,170 @@ dist_traveled_players %>%
 
 How fast does the ball move on a particular play? I choose a pass that results in a steal here.
 
-```{r}
+```{r class.output = "special-text"}
 event_df <- all_movements_clean %>%
   dplyr::filter(event_id == 56) %>% # Random play
   dplyr::filter(player_id == -1) %>% # Select only ball
-  dplyr::filter(shot_clock != 24)# Prevent data spill over
+  dplyr::filter(shot_clock != 24) # Prevent data spill over
 
 v <- velocity(event_df$x_loc, event_df$y_loc)
-v <- prepend(v, NA)
+v <- prepend(v, NA) # So there is the same number of columns for rejoining
 
 event_df <- event_df %>% bind_cols(velocity = v)
 ggplot(event_df, aes(x = game_clock, y = velocity)) +
   geom_point() +
   geom_line() +
-  geom_smooth(span = 0.05, se = F)
+  geom_smooth(span = 0.05, se = F) +
+  labs(x = "Game Clock", y = "Velocity") +
+  theme_bball()
 
-mean(v)
+paste("The mean velocity of the ball on this play is", 
+      mean(v, na.rm = T), "units/unit.") # Mean velocity of the ball is 872, not sure how to convert that
+```
+
+## Acceleration
+
+```{r}
+# Change ball name, give players one name
+acceleration_df <- all_movements_clean %>%
+  mutate(name = paste(firstname, lastname)) %>%
+  mutate(name = ifelse(name == "NA ball", "The Ball", name)) %>%
+  group_by(event_id, name) %>%
+  summarise(acceleration = mean(acceleration(x_loc, y_loc))) %>%
+  arrange(event_id)
+# Plot each player's acceleration over the course of the game
+ggplot(acceleration_df, aes(x = event_id, y = acceleration, color = name)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = basketball_colors(25)) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 6), labels = scales::comma) +
+  labs(x = "Play of Game", y = "Acceleration (idk units yet)", title = "Acceleration Per Player") +
+  facet_wrap(~ name) +
+  theme_bball()
+```
+
+
+## Jerk
+
+How should I do substitutions?
+
+```{r}
+# Change ball name, give players one name
+jerk_df <- all_movements_clean %>%
+  mutate(name = paste(firstname, lastname)) %>%
+  mutate(name = ifelse(name == "NA ball", "The Ball", name)) %>%
+  group_by(event_id, name) %>%
+  summarise(jerk = mean(jerk(x_loc, y_loc))) %>%
+  arrange(event_id)
+# Plot each player's jerk over the course of the game, which will obviously be the same graph
+ggplot(jerk_df, aes(x = event_id, y = jerk, color = name)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = basketball_colors(25)) +
+  facet_wrap(~ name) +
+  theme_bball() 
+```
+
+# Convex Hulls and Image Making
+
+An NBA court is 94 feet by 50 feet. In the data x_loc (the x location variable) has a minimum, and maximum of (-5.22728, 98.53855), y_loc (the y location variable) is (-3.27955, 52.23675). It is safe to assume that the negative distances are just out of bounds, and mostly - presumably - the ball or inbounds passes.
+
+## Player positions
+
+Let's see where player's are when the ball crosses the 28' line (the three point line) on a given play. Here I choose Gerald Green making a 14' pull-up jump shot.
+
+```{r}
+# Select event
+event_394 <- all_movements_clean %>% 
+  filter(event_id == 394) %>%
+  arrange(desc(game_clock))
+# Select max time
+balltime <- event_394 %>%
+  filter(player_id == -1) %>%
+  summarise(clock28 = max(game_clock[x_loc < 28])) %>%
+  deframe()
+# What does this look like grouped
+all_movements_clean %>%
+  group_by(event_id) %>%
+  filter(player_id == -1) %>%
+  summarise(clock28 = max(game_clock[x_loc < 28], na.rm = T),
+            descriptionPlayHome = unique(descriptionPlayHome))
+# Find player positions at time [balltime], gives a dataframe of 10 players which makes sense
+player_pos <- event_394 %>%
+  filter(game_clock == balltime) %>%
+  filter(player_id != -1) %>% # Don't record the ball
+  mutate(name = paste(firstname, lastname)) %>%
+  select(x_loc, y_loc, name, team_id) %>%
+  rename_all( ~ str_to_title(.))
+player_pos %>%
+  reactable()
+```
+
+## Calculating the "Convex Hull"
+
+We have to do this separately, for the defensive and offensive teams, although there could be interesting results for convex hulls by types of players.
+
+```{r}
+# Select defense x and y
+player_pos_defense <- player_pos %>%
+  filter(Team_id == min(Team_id)) %>%# This chooses the mavericks, the defensive team
+  select(X_loc, Y_loc) # They all appear very close to each other, looks good
+# Calculate convex hull
+chull1 <- chull(player_pos_defense) 
+chull2 <- c(chull1, chull1[1]) # 5 points needed for four line segments, add first set of points at the end
+df_pos <- as_tibble(bind_cols(ID = 1, 
+                              X = player_pos_defense[chull2,]$X_loc, 
+                              Y = player_pos_defense[chull2,]$Y_loc))
+area_def <- round(chull_area(df_pos$X, df_pos$Y), 2)
+# Plot the hull with names
+df_pos %>% 
+  left_join(player_pos, by = c("X" = "X_loc", "Y" = "Y_loc")) %>%
+  ggplot(aes(x = X, y = Y)) +
+  geom_polygon(color = "white", fill = "orange") +
+  geom_text(aes(label = paste("Convex Hull Area =", area_def), x = mean(df_pos$X), y = mean(df_pos$Y))) +
+  geom_text(aes(label = Name)) +
+  theme_bball() # Would be cool to rotate names based on polygon segments?
+```
+
+## Plotting on a Court
+
+It looks like this play starts on an inbound.
+
+```{r}
+# I just have to make this sort by event id, and for a full court for a really useful function
+# Right now let's just animate this play, which should go by row number
+dplayer <- player_position(eventID = 394, gameClock = balltime, df = all_movements_clean) # Going to have to do something about time call here
+dchull <- chull_plot(eventID = 394, gameClock = balltime, df = all_movements_clean) # Tibbles get wack here
+dcentroid <- chull_plot_centroid(eventID = 394, gameClock = balltime, df = all_movements_clean) # Bind_rows requires names, use bind_rows
+
+plot_court(court_themes$light) +
+  # Add players
+  geom_point(data = dplayer, aes(x = X,y = Y, group = ID),
+               color = dense_rank(dplayer$`ID`), size = 5) +
+  geom_text(data = dplayer, aes(label = NAME, x = X, y = Y, group = ID), vjust = -1) +
+  scale_colour_brewer() +
+  # Add Convex hull areas
+  geom_polygon(data = dchull,aes(x = X, y = Y, group = ID),
+               fill = dense_rank(dchull$ID), alpha = 0.2) +
+  scale_fill_brewer() +
+  # Add Centroids
+  scale_shape_identity() +
+  geom_point(data = dcentroid, aes(x = X, y = Y, group = ID),
+             color = (dcentroid$ID), size = 3, shape = 13) +
+  geom_text(data = dcentroid, aes(x = X, y = Y, group = ID),
+             color = (dcentroid$ID), size = 3, label = "Centroid:", hjust = 1.2)
+```
+
+## Animating Play 394
+
+```{r}
+anim_394 <- event_394 %>%
+  group_by(game_clock) %>%
+  mutate(group_id = cur_group_id()) %>%
+  relocate(group_id, .before = event_id)
+
+# Plot then add gganimate?
+
 ```
 
 
