@@ -31,6 +31,8 @@ all_movements <- read_rds(here("Data/all_movements1.rds"))
 all_movements_clean <- read_rds(here("Data/all_movements_clean1.rds"))
 
 source(here("Functions/Functions.R"))
+source(here("Functions/FunctionFullcourt.R"))
+source(here("Functions/FunctionHalfcourt.R"))
 
 ## Global options
 # options(max.print="75")
@@ -420,7 +422,7 @@ It looks like this play starts on an inbound.
 # Right now let's just animate this play, which should go by row number
 dplayer <- player_position(eventID = 394, gameClock = balltime, df = all_movements_clean) # Going to have to do something about time call here
 dchull <- chull_plot(eventID = 394, gameClock = balltime, df = all_movements_clean) # Tibbles get wack here
-dcentroid <- chull_plot_centroid(eventID = 394, gameClock = balltime, df = all_movements_clean) # Bind_rows requires names, use bind_rows
+dcentroid <- chull_plot_centroid(eventID = 394, gameClock = balltime, df = all_movements_clean) # Bind_rows requires names, use rbind in the function instead
 
 plot_court(court_themes$light) +
   # Add players
@@ -429,7 +431,7 @@ plot_court(court_themes$light) +
   geom_text(data = dplayer, aes(label = NAME, x = X, y = Y, group = ID), vjust = -1) +
   scale_colour_brewer() +
   # Add Convex hull areas
-  geom_polygon(data = dchull,aes(x = X, y = Y, group = ID),
+  geom_polygon(data = dchull, aes(x = X, y = Y, group = ID),
                fill = dense_rank(dchull$ID), alpha = 0.2) +
   scale_fill_brewer() +
   # Add Centroids
@@ -443,13 +445,93 @@ plot_court(court_themes$light) +
 ## Animating Play 394
 
 ```{r}
+# Dataframe for play 394, groups by shot clock to make group id and identifies ball and player
 anim_394 <- event_394 %>%
-  group_by(game_clock) %>%
-  mutate(group_id = cur_group_id()) %>%
-  relocate(group_id, .before = event_id)
+  mutate(group_id = dense_rank(desc(game_clock))) %>%
+  relocate(group_id, .before = event_id) %>%
+  mutate(value = case_when(player_id == -1 ~ "ball",
+                           player_id != -1 ~ "player"),
+         team_id = factor(team_id)) # Need to make sure this encodes by defense or offense later
+
+# Calculating the chull
+chull_394 <- anim_394 %>%
+  filter(value != "ball") %>%
+  group_by(group_id, team_id) %>%
+  nest() %>%
+  mutate(
+    hull = map(data, ~ with(.x, chull_plot2(x_loc, y_loc))),
+    out = map2(data, hull, ~ .x[.y, , drop = F])
+  ) %>%
+  select(-data) %>%
+  unnest(cols = c(hull, out)) %>%
+  group_by(group_id, team_id) %>%
+  mutate(centroid_x = mean(x_loc),
+            centroid_y = mean(y_loc)) %>%
+  ungroup() #%>% # Did I do this correctly?
+  # rename(chull_id = group_id)
+  
 
 # Plot then add gganimate?
+p <- fullcourt() +
+  # Add Players
+  geom_point(data = filter(anim_394, value == "player"), 
+             aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
+  geom_text(data = filter(anim_394, value == "player"), 
+            aes(x = x_loc, y = y_loc, group = team_id, label = paste(firstname, lastname)), 
+            vjust = -1, color = "black") +
+  scale_color_manual(values = c("steelblue", "orangered"), labels = c("Dallas Mavericks", "Miami Heat")) +
+  geom_point(data = filter(anim_394, value == "ball"), color = "darkorange", size = 3, aes(x = x_loc, y = y_loc)) + # Add ball
+  # Add Convex hull areas
+  geom_polygon(data = chull_394, aes(x = x_loc, y = y_loc, group = team_id, fill = team_id),
+               alpha = 0.2) +
+  scale_fill_manual(values = c("steelblue", "orangered")) +
+  # Add Centroids
+  geom_point(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, shape = 13) +
+  geom_text(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, label = "Centroid:", hjust = 1.2) +
+  labs(title = "{current_frame}") # Needs fixing this literally doesn't ever load???
 
+# Animated version
+anim_final <- p + transition_manual(frames = game_clock)
+animated <- animate(anim_final, 
+                    width = 800,
+                    height = 800,
+                    nframes = length(unique(anim_394$game_clock)),
+                    fps = 10,
+                    res = 150,
+                    end_pause = 0)
+anim_save(here("Gifs/394_0021500491.gif"), animated)
+
+# With transition_state
+p2 <- fullcourt() +
+  # Add Players
+  geom_point(data = filter(anim_394, value == "player"), 
+             aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
+  geom_text(data = filter(anim_394, value == "player"), 
+            aes(x = x_loc, y = y_loc, group = team_id, label = paste(firstname, lastname)), 
+            vjust = -1, color = "black") +
+  scale_color_manual(values = c("steelblue", "orangered"), labels = c("Dallas Mavericks", "Miami Heat")) +
+  geom_point(data = filter(anim_394, value == "ball"), color = "darkorange", size = 3, aes(x = x_loc, y = y_loc)) + # Add ball
+  # Add Convex hull areas
+  geom_polygon(data = chull_394, aes(x = x_loc, y = y_loc, group = team_id, fill = team_id),
+               alpha = 0.2, show.legend = F) +
+  scale_fill_manual(values = c("steelblue", "orangered")) +
+  # Add Centroids
+  geom_point(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, shape = 13) +
+  geom_text(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, label = "Centroid:", hjust = 1.2, show.legend = F) +
+  labs(title = "{closest_state}") # Needs fixing this literally doesn't ever load???
+anim_test <- p2 + transition_states(states = group_id)
+animated_test <- animate(anim_test, 
+                    width = 800,
+                    height = 800,
+                    nframes = length(unique(anim_394$group_id)),
+                    fps = 10,
+                    res = 150,
+                    end_pause = 0)
+anim_save(here("Gifs/394_0021500491.gif"), animated_test)
 ```
 
 
