@@ -313,7 +313,7 @@ paste("The mean velocity of the ball on this play is",
 
 ## Acceleration
 
-```{r}
+```{r acceleration}
 # Change ball name, give players one name
 acceleration_df <- all_movements_clean %>%
   mutate(name = paste(firstname, lastname)) %>%
@@ -337,7 +337,7 @@ ggplot(acceleration_df, aes(x = event_id, y = acceleration, color = name)) +
 
 How should I do substitutions?
 
-```{r}
+```{r jerk}
 # Change ball name, give players one name
 jerk_df <- all_movements_clean %>%
   mutate(name = paste(firstname, lastname)) %>%
@@ -362,7 +362,7 @@ An NBA court is 94 feet by 50 feet. In the data x_loc (the x location variable) 
 
 Let's see where player's are when the ball crosses the 28' line (the three point line) on a given play. Here I choose Gerald Green making a 14' pull-up jump shot.
 
-```{r}
+```{r player-pos}
 # Select event
 event_394 <- all_movements_clean %>% 
   filter(event_id == 394) %>%
@@ -393,7 +393,7 @@ player_pos %>%
 
 We have to do this separately, for the defensive and offensive teams, although there could be interesting results for convex hulls by types of players.
 
-```{r}
+```{r plot-chull}
 # Select defense x and y
 player_pos_defense <- player_pos %>%
   filter(Team_id == min(Team_id)) %>%# This chooses the mavericks, the defensive team
@@ -419,7 +419,7 @@ df_pos %>%
 
 It looks like this play starts on an inbound.
 
-```{r}
+```{r plot-court-image}
 # I just have to make this sort by event id, and for a full court for a really useful function
 # Right now let's just animate this play, which should go by row number
 dplayer <- player_position(eventID = 394, gameClock = balltime, df = all_movements_clean) # Going to have to do something about time call here
@@ -446,7 +446,7 @@ plot_court(court_themes_half$light) +
 
 ## Quick Interlude of Team Color Data
 
-```{r}
+```{r obtain-colors}
 team_names <- read_rds(here("Data/team_id.rds"))
 team_colors <- teamcolors %>% filter(league == "nba")
 color_names <- team_names %>%
@@ -456,7 +456,7 @@ color_names <- team_names %>%
 
 ## Animating Play 394
 
-```{r}
+```{r test-play394}
 # Dataframe for play 394, groups by shot clock to make group id and identifies ball and player
 anim_394 <- event_394 %>%
   mutate(group_id = dense_rank(desc(game_clock))) %>%
@@ -558,27 +558,27 @@ p2 <- fullcourt(court_themes$light) +
   geom_text(data = anim_394, aes(x = 48.75+2, y = 57.5, label = str_to_upper(quarter_annotate)), 
             size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
   ggtitle(paste("Current Score:", anim_394$slugScore))
-anim_test <- p2 + transition_states(states = group_id)
-animated_test <- animate(anim_test, 
+anim_394_gif <- p2 + transition_states(states = group_id)
+animated_394 <- animate(anim_394_gif, 
                     width = 1725.450,
                     height = 913.636,
                     nframes = (length(unique(anim_394$group_id))/2),
                     fps = 20,
                     res = 100,
                     end_pause = 0) # ISSUES: SCORE DOES NOT CHANGE, IN THIS PART OF DATA, EVENT ID IS SUBSET WEIRDLY AND INCLUDES A LOT AFTER THE PLAY
-animated_test
-# anim_save(here("Gifs/394_0021500491_04.gif"), animated_test)
+animated_394
+# anim_save(here("Gifs/394_0021500491_04.gif"), animated_394)
 ```
 
 
 ## FOR TESTING
 
-```{r include = F}
+```{r testing-graphs, include = F}
 # Can I join these? Seems impossible since chull has to be longer
 # test_join <- anim_394 %>% left_join(select(chull_394, x_loc, y_loc, centroid_x, centroid_y, group_id), by = c("group_id"))
-# img <- (dplyr::filter(anim_394, team_value == "home") %>% select(logo) %>% unique() %>% pull(logo))
-# img_read <- caTools::read.gif(img, frame = 1)
-# mat <- img$col[img$image+1]
+img <- (dplyr::filter(anim_394, team_value == "home") %>% select(logo) %>% unique() %>% pull(logo))
+logo_raw <- magick::image_read(img)
+logo <- rasterGrob(logo_raw, interpolate = T)
 # For adding logo, doesn't work currently
 
 test_gif <- fullcourt(court_themes$light) +
@@ -588,16 +588,16 @@ test_gif <- fullcourt(court_themes$light) +
   geom_text(data = filter(anim_394[1:22,], value == "player"), 
             aes(x = x_loc, y = y_loc, group = team_id, label = paste(firstname, lastname)), 
             vjust = -1, color = "black", family = "Roboto Condensed") +
-  scale_color_manual(values = c(dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe(),
-                       dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe()), 
-                     labels = c(dplyr::filter(anim_394, team_value == "home") %>% select(nameTeam) %>% unique() %>% deframe(),
-                                dplyr::filter(anim_394, team_value == "away") %>% select(nameTeam) %>% unique() %>% deframe())) +
+  scale_color_manual(values = c(dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe(),  
+                                  dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe()),
+                     labels = c(dplyr::filter(anim_394, team_value == "away") %>% select(nameTeam) %>% unique() %>% deframe(),
+                                  dplyr::filter(anim_394, team_value == "home") %>% select(nameTeam) %>% unique() %>% deframe())) +
   geom_point(data = filter(anim_394[1:22,], value == "ball"), color = "darkorange", size = 3, aes(x = x_loc, y = y_loc)) + # Add ball
   # Add Convex hull areas
   geom_polygon(data = chull_394[1:24,], aes(x = x_loc, y = y_loc, group = team_id, fill = team_id),
                alpha = 0.2, show.legend = F) +
-  scale_fill_manual(values = c(dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe(),
-                      dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe())) +
+  scale_fill_manual(values = c(dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe(),  
+                               dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe())) +
   # Add Centroids
   geom_point(data = chull_394[1:24,], aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
              size = 3, shape = 13) +
@@ -612,6 +612,8 @@ test_gif <- fullcourt(court_themes$light) +
   # Add quarter
   geom_text(data = anim_394[1:22,], aes(x = 48.75+2, y = 57.5, label = str_to_upper(quarter_annotate)), 
             size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
+  # Add logo
+  annotation_custom(logo, xmin = 42, xmax = 52, ymin = 20.04, ymax = 30.04) +
   ggtitle(paste("Current Score:", anim_394$slugScore))
 anim__gif_test <- test_gif + transition_manual(frames = group_id)
 final_test <- animate(anim__gif_test, 
@@ -621,12 +623,13 @@ final_test <- animate(anim__gif_test,
                     fps = 20,
                     res = 100,
                     end_pause = 0) # ISSUES: SCORE DOES NOT CHANGE, IN THIS PART OF DATA, EVENT ID IS SUBSET WEIRDLY AND INCLUDES A LOT AFTER THE PLAY
+final_test
 # anim_save(here("Gifs/test.gif"), final_test)
 ```
 
 # Testing Out Functions
 
-```{r}
+```{r test-functions}
 # All Dunks in this game
 all_movements_clean %>% 
   filter(str_detect(descriptionPlayHome, "Dunk|dunk") == T | str_detect(descriptionPlayVisitor, "Dunk|dunk") == T) %>% 

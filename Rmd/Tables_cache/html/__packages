@@ -20,3 +20,6 @@ RCurl
 jsonlite
 sp
 printr
+gganimate
+lubridate
+teamcolors

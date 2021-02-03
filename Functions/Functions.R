@@ -225,7 +225,7 @@ chull_plot <- function(eventID, gameClock, df) {
     return(dfall)
 }
 
-# This one uses map and is better
+# This one works with map and is better
 chull_plot2 <- function(x, y) {
   chull1 <- chull(x, y)
   chull2 <- c(chull1, chull1[1])

@@ -106,7 +106,7 @@ fullcourt <- function(court_theme = court_themes$light) {
       axis.text = element_blank(),
       axis.ticks = element_blank(),
       axis.title = element_blank(),
-      legend.position = c(0.416, 0.9),
+      legend.position = c(0.406, 0.9),
       legend.direction = "horizontal",
       legend.text = element_text(face = "bold", color = court_theme$text),
       legend.background = element_rect(fill = NA),
