@@ -149,9 +149,11 @@ pbp <- pbp %>% rename(event_id = numberEvent) %>%
   select(event_id, slugScore, descriptionPlayHome, descriptionPlayVisitor, hasVideo,
          numberEventMessageType, numberEventActionType)
 # Merge
-all_movements <- read_rds(here("Data/all_movements1.rds"))
+# all_movements <- read_rds(here("Data/all_movements1.rds"))
 # all_movements_clean <- merge(all_movements, pbp, by = "event_id", all.x = T) # Never use this again
-all_movements_clean <- left_join(all_movements, pbp, by = "event_id")
+all_movements_clean <- left_join(all_movements, pbp, by = "event_id") %>%
+  arrange(event_id) %>%
+  relocate(event_id, .before = player_id)
 
 write_rds(all_movements_clean, here("Data/all_movements_clean1.rds"))
 ```
