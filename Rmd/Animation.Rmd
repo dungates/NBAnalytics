@@ -1,0 +1,264 @@
+---
+title: "Animations"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true # Other options are downcute, robobook, material, readthedown, html_clean, html_docco, lockdown, https://github.com/juba/rmdformats
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    highlight: tango
+    number_sections: true
+    includes:
+      after_body: footer.html
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+library(nbastatR)
+library(tidyverse)
+library(here)
+library(ggthemes)
+library(cowplot)
+library(reactable)
+library(sparkline)
+library(readr)
+library(gganimate)
+library(lubridate)
+library(magick)
+library(ggtext)
+library(grid)
+
+all_movements <- read_rds(here("Data/all_movements1.rds"))
+
+all_movements_clean <- read_rds(here("Data/all_movements_clean1.rds"))
+
+source(here("Functions/Functions.R"))
+source(here("Functions/FunctionFullcourt.R"))
+source(here("Functions/FunctionHalfcourt.R"))
+source(here("Functions/Animation.R"))
+
+## Global options
+opts_chunk$set(echo=T,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE,
+               align = 'center')
+# htmltools::tagList(rmarkdown::html_dependency_font_awesome()) # Needed so fa's in footer will show
+basketball_colors <- colorRampPalette(colors = c("#bcb6ae", "#df861d", "#aa3d01", "#171820")) # Silver to light orange, orange, black
+basketball_colors2 <- colorRampPalette(colors = c("#df861d", "#aa3d01", "#171820"))
+basketball_palette <- c("#171820", "#fdc029", "#df861d", "#aa3d01", "#bcb6ae")
+```
+
+# Constructing the Necessary Data
+
+## Filtering One Game's Dataframe
+
+```{r cars}
+# Select event
+event_394 <- all_movements_clean %>% 
+  filter(event_id == 394) %>%
+  arrange(desc(game_clock))
+```
+
+## Creating Scoreboard and Player Animation Data
+
+```{r test-play394}
+# Dataframe for play 394, groups by shot clock to make group id and identifies ball and player
+anim_394 <- event_394 %>%
+  mutate(group_id = dense_rank(desc(game_clock))) %>%
+  relocate(group_id, .before = event_id) %>%
+  mutate(value = case_when(player_id == -1 ~ "ball",
+                           player_id != -1 ~ "player"),
+         team_id = factor(team_id),
+         quarter_annotate = case_when(quarter == 4 ~ "4th",
+                                      quarter == 3 ~ "3rd",
+                                      quarter == 2 ~ "2nd",
+                                      quarter == 1 ~ "1st",
+                                      quarter == 5 ~ "5th",
+                                      quarter == 6 ~ "6th",
+                                      quarter == 7 ~ "7th",
+                                      quarter == 8 ~ "8th"),
+         clock_annotate = game_clock_reformat(game_clock)) %>%
+    left_join(select(color_names, primary, nameTeam, logo, idTeam), by = c("team_id" = "idTeam")) # Need to make sure this encodes by defense or offense later, add team colors as well
+```
+
+## Creating Convex Hull Data
+
+```{r}
+# Calculating the chull
+chull_394 <- anim_394 %>%
+  filter(value != "ball") %>%
+  group_by(group_id, team_id) %>%
+  nest() %>%
+  mutate(
+    hull = map(data, ~ with(.x, chull_plot2(x_loc, y_loc))),
+    out = map2(data, hull, ~ .x[.y, , drop = F])
+  ) %>%
+  select(-data) %>%
+  unnest(cols = c(hull, out)) %>%
+  group_by(group_id, team_id) %>%
+  mutate(centroid_x = mean(x_loc),
+            centroid_y = mean(y_loc)) %>%
+  ungroup() #%>% # Did I do this correctly?
+  # rename(chull_id = group_id)
+```
+
+## First Animation, Uses transition_states
+
+```{r eval = F}
+# With transition_manual now, this is original
+p2 <- fullcourt(court_themes$light) +
+  # Add Players
+  geom_point(data = filter(anim_394, value == "player"), 
+             aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
+  geom_text(data = filter(anim_394, value == "player"), 
+            aes(x = x_loc, y = y_loc, group = team_id, label = paste(firstname, lastname)), 
+            vjust = -1, color = "black", family = "Roboto Condensed") +
+  scale_color_manual(values = c(dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe(),
+                       dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe()), 
+                     labels = c(dplyr::filter(anim_394, team_value == "home") %>% select(nameTeam) %>% unique() %>% deframe(),
+                                dplyr::filter(anim_394, team_value == "away") %>% select(nameTeam) %>% unique() %>% deframe())) +
+  geom_point(data = filter(anim_394, value == "ball"), color = "darkorange", size = 3, aes(x = x_loc, y = y_loc)) + # Add ball
+  # Add Convex hull areas
+  geom_polygon(data = chull_394, aes(x = x_loc, y = y_loc, group = team_id, fill = team_id),
+               alpha = 0.2, show.legend = F) +
+  scale_fill_manual(values = c(dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe(),
+                      dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe())) +
+  # Add Centroids
+  geom_point(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, shape = 13) +
+  geom_text(data = chull_394, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, label = "Centroid:", hjust = 1.2, show.legend = F, family = "Roboto Condensed") +
+  # Add shot clock
+  geom_text(data = anim_394, aes(x = 62.5+2, y = 57.5, label = shot_clock), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") + # Why is geom_text always so ugly
+  # Add game clock
+  geom_text(data = anim_394, aes(x = 56.25+2, y = 57.5, label = clock_annotate), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
+  # Add quarter
+  geom_text(data = anim_394, aes(x = 48.75+2, y = 57.5, label = str_to_upper(quarter_annotate)), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
+  ggtitle(paste("Current Score:", anim_394$slugScore))
+anim_394_gif <- p2 + transition_states(states = group_id)
+animated_394 <- animate(anim_394_gif, 
+                    width = 1725.450,
+                    height = 913.636,
+                    nframes = (length(unique(anim_394$group_id))/2),
+                    fps = 20,
+                    res = 100,
+                    end_pause = 0) # ISSUES: SCORE DOES NOT CHANGE, IN THIS PART OF DATA, EVENT ID IS SUBSET WEIRDLY AND INCLUDES A LOT AFTER THE PLAY
+# animated_394
+anim_save(here("Gifs/394_0021500491_04.gif"), animated_394)
+```
+
+```{r}
+knitr::include_graphics(here("Gifs/394_0021500491_05.gif"))
+```
+
+
+## Very Short Animation for Graph Adjustments
+
+```{r testing-graphs, eval = F}
+# Can I join these? Seems impossible since chull has to be longer
+# test_join <- anim_394 %>% left_join(select(chull_394, x_loc, y_loc, centroid_x, centroid_y, group_id), by = c("group_id"))
+img <- (dplyr::filter(anim_394, team_value == "home") %>% select(logo) %>% unique() %>% pull(logo))
+logo_raw <- magick::image_read(img) %>%
+  image_transparent(color = "white")
+logo <- rasterGrob(logo_raw, interpolate = T)
+# For adding logo, doesn't work currently
+
+test_gif <- fullcourt(court_themes$light) +
+  # Add logo
+  annotation_custom(logo, xmin = 43.1, xmax = 53.1, ymin = 20.02, ymax = 30.02) +
+  # Add Players
+  geom_point(data = filter(anim_394[1:22,], value == "player"), 
+             aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
+  geom_text(data = filter(anim_394[1:22,], value == "player"), 
+            aes(x = x_loc, y = y_loc, group = team_id, label = paste(firstname, lastname)), 
+            vjust = -1, color = "black", family = "Roboto Condensed") +
+  scale_color_manual(values = c(dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe(),  
+                                  dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe()),
+                     labels = c(dplyr::filter(anim_394, team_value == "away") %>% select(nameTeam) %>% unique() %>% deframe(),
+                                  dplyr::filter(anim_394, team_value == "home") %>% select(nameTeam) %>% unique() %>% deframe())) +
+  geom_point(data = filter(anim_394[1:22,], value == "ball"), color = "darkorange", size = 3, aes(x = x_loc, y = y_loc)) + # Add ball
+  # Add Convex hull areas
+  geom_polygon(data = chull_394[1:24,], aes(x = x_loc, y = y_loc, group = team_id, fill = team_id),
+               alpha = 0.2, show.legend = F) +
+  scale_fill_manual(values = c(dplyr::filter(anim_394, team_value == "away") %>% select(primary) %>% unique() %>% deframe(),  
+                               dplyr::filter(anim_394, team_value == "home") %>% select(primary) %>% unique() %>% deframe())) +
+  # Add Centroids
+  geom_point(data = chull_394[1:24,], aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, shape = 13) +
+  geom_text(data = chull_394[1:24,], aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
+             size = 3, label = "Centroid:", hjust = 1.2, show.legend = F, family = "Roboto Condensed") +
+  # Add shot clock
+  geom_richtext(data = anim_394[1:22,], aes(x = 62.5+2, y = 57.5, label = shot_clock), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") + # Why is geom_text always so ugly
+  # Add game clock
+  geom_richtext(data = anim_394[1:22,], aes(x = 56.25+2, y = 57.5, label = clock_annotate), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
+  # Add quarter
+  geom_richtext(data = anim_394[1:22,], aes(x = 48.75+2, y = 57.5, label = str_to_upper(quarter_annotate)), 
+            size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
+  geom_richtext(aes(label = paste("Current Score:", anim_394$slugScore[1]), x = 37.5, y = 58.2),
+                size = 6, color = "black", family = "Roboto Condensed", fontface = "bold",
+                fill = NA, label.color = NA)
+anim__gif_test <- test_gif + transition_manual(frames = group_id)
+final_test <- animate(anim__gif_test, 
+                    width = 1725.450,
+                    height = 913.636,
+                    nframes = 2,
+                    fps = 20,
+                    res = 100,
+                    end_pause = 0) # ISSUES: SCORE DOES NOT CHANGE, IN THIS PART OF DATA, EVENT ID IS SUBSET WEIRDLY AND INCLUDES A LOT AFTER THE PLAY
+# final_test
+anim_save(here("Gifs/test.gif"), final_test)
+```
+
+```{r}
+knitr::include_graphics(here("Gifs/test.gif"))
+```
+
+
+# Testing Out Functions
+
+Let's check for dunks in the data and see what that looks like in an animation.
+
+```{r test-functions}
+# All Dunks in this game
+all_movements_clean %>% 
+  filter(str_detect(descriptionPlayHome, "Dunk|dunk") == T | str_detect(descriptionPlayVisitor, "Dunk|dunk") == T) %>% 
+  select(event_id) %>% 
+  unique()
+```
+
+Now we know there's 7 options here, but animating takes a long time right now, so I just animate the first, event 149.
+
+```{r eval = F}
+anim_149 <- animate_play(all_movements_clean, 149)
+anim_149
+# anim_save(here("Gifs/149_0021500491_01.gif"))
+```
+
+```{r}
+knitr::include_graphics(here("Gifs/149_0021500491_01.gif"))
+```
+
+In the interest of saving time I create two gif making functions, one that takes all observations, and one that only takes half, creating the poorer quality, but much faster to render gif below.
+
+```{r eval = F}
+anim_149_quick <- animate_play_quick(all_movements_clean, 149)
+anim_149_quick
+# anim_save(here("Gifs/149_0021500491_quick_01.gif"))
+```
+
+```{r}
+knitr::include_graphics(here("Gifs/149_0021500491_quick_01.gif"))
+```
+
+

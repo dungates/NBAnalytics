@@ -4,6 +4,7 @@ library(tidyverse)
 library(teamcolors)
 library(nbastatR)
 library(magick)
+library(ggtext)
 
 ### Get team colors and names
 team_logos <- tibble(logo = c("https://ftw.usatoday.com/wp-content/uploads/sites/90/2016/05/logo-golden-state-warriors.png?w=1000&h=600&crop=1",
@@ -131,7 +132,7 @@ animate_play <- function(DF, EVENT_ID) {
   # Creating the plot that is a basis for animating
   p2 <- fullcourt(court_themes$light) +
     # Add logo
-    annotation_custom(logo, xmin = 42, xmax = 52, ymin = 20.02, ymax = 30.02) +
+    annotation_custom(logo, xmin = 43.1, xmax = 53.1, ymin = 20.02, ymax = 30.02) +
     # Add Players
     geom_point(data = filter(anim_x, value == "player"), 
                aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
@@ -154,15 +155,17 @@ animate_play <- function(DF, EVENT_ID) {
     geom_text(data = chull_x, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
               size = 3, label = "Centroid:", hjust = 1.2, show.legend = F, family = "Roboto Condensed") +
     # Add shot clock
-    geom_text(data = anim_x, aes(x = 64.5, y = 57.5, label = shot_clock), 
+    geom_richtext(data = anim_x, aes(x = 64.5, y = 57.5, label = shot_clock), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") + # Why is geom_text always so ugly
     # Add game clock
-    geom_text(data = anim_x, aes(x = 58.25, y = 57.5, label = clock_annotate), 
+    geom_richtext(data = anim_x, aes(x = 58.25, y = 57.5, label = clock_annotate), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
     # Add quarter
-    geom_text(data = anim_x, aes(x = 50.75, y = 57.5, label = str_to_upper(quarter_annotate)), 
+    geom_richtext(data = anim_x, aes(x = 50.75, y = 57.5, label = str_to_upper(quarter_annotate)), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
-    ggtitle(paste("Current Score:", anim_x$slugScore))
+    geom_richtext(aes(label = paste("Current Score:", anim_x$slugScore[1]), x = 37.5, y = 58.2),
+                  size = 6, color = "black", family = "Roboto Condensed", fontface = "bold",
+                  fill = NA, label.color = NA)
   anim_final <- p2 + transition_manual(frames = group_id)
   animated <- animate(anim_final, 
                            width = 1725.450,
@@ -229,7 +232,7 @@ animate_play_quick <- function(DF, EVENT_ID) {
   # Creating the plot that is a basis for animating
   p2 <- fullcourt(court_themes$light) +
     # Add logo
-    annotation_custom(logo, xmin = 42, xmax = 52, ymin = 20.02, ymax = 30.02) +
+    annotation_custom(logo, xmin = 43.1, xmax = 53.1, ymin = 20.02, ymax = 30.02) +
     # Add Players
     geom_point(data = filter(anim_x, value == "player"), 
                aes(x = x_loc, y = y_loc, group = team_id, color = team_id), size = 5) +
@@ -252,15 +255,17 @@ animate_play_quick <- function(DF, EVENT_ID) {
     geom_text(data = chull_x, aes(x = centroid_x, y = centroid_y, group = team_id, color = team_id),
               size = 3, label = "Centroid:", hjust = 1.2, show.legend = F, family = "Roboto Condensed") +
     # Add shot clock
-    geom_text(data = anim_x, aes(x = 64.5, y = 57.5, label = shot_clock), 
+    geom_richtext(data = anim_x, aes(x = 64.5, y = 57.5, label = shot_clock), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") + # Why is geom_text always so ugly
     # Add game clock
-    geom_text(data = anim_x, aes(x = 58.25, y = 57.5, label = clock_annotate), 
+    geom_richtext(data = anim_x, aes(x = 58.25, y = 57.5, label = clock_annotate), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
     # Add quarter
-    geom_text(data = anim_x, aes(x = 50.75, y = 57.5, label = str_to_upper(quarter_annotate)), 
+    geom_richtext(data = anim_x, aes(x = 50.75, y = 57.5, label = str_to_upper(quarter_annotate)), 
               size = 6, color = "#BF0A30", family = "Roboto Condensed", fontface = "bold") +
-    ggtitle(paste("Current Score:", anim_x$slugScore))
+    geom_richtext(aes(label = paste("Current Score:", anim_x$slugScore[1]), x = 37.5, y = 58.2),
+                  size = 6, color = "black", family = "Roboto Condensed", fontface = "bold",
+                  fill = NA, label.color = NA)
   anim_final <- p2 + transition_manual(frames = group_id)
   animated <- animate(anim_final, 
                       width = 1725.450,
